@@ -96,8 +96,10 @@ q
 
 - `main.cpp` - entry point and high-level project notes.
 - `app.h` - CLI renderer, board logic, minimax search, and AI personality scoring.
+- `main.ino` - ATmega328P / Arduino AVR sketch using the calibrated keypad and LED matrix.
 - `CMakeLists.txt` - CMake build configuration.
 - `blueprint.txt` - ATmega328P pin and LED/keypad calibration notes.
+- `CALIBRATION.md` - hardcoded keypad and LED matrix mapping used by `main.ino`.
 - `Project Report.pdf` - semester report for the intended hardware implementation.
 
 ## Hardware Direction
@@ -111,4 +113,13 @@ The report's embedded target uses:
 - Timer interrupt refresh above visible flicker range.
 - Internal pull-ups for input simplification.
 
-This repository intentionally does not include Arduino or embedded code yet. The current goal is to keep the game logic clear and testable before porting it to `.ino`.
+The sketch keeps the CLI prototype convention: `r` is the AI red LED, `b` is the user blue LED, and `g` is the green winning line. The keypad columns and LED routes are intentionally hardcoded from `CALIBRATION.md`; do not reorder them to match a clean schematic.
+
+Build a HEX with Arduino CLI, using the Uno target for an ATmega328P at 16 MHz:
+
+```bash
+arduino-cli core install arduino:avr
+arduino-cli compile --fqbn arduino:avr:uno --output-dir build/avr main.ino
+```
+
+If you are using a bare ATmega328P without an Uno bootloader, compile for the matching 16 MHz ATmega328P board package you use for ISP flashing.
