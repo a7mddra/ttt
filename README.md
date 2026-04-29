@@ -69,6 +69,15 @@ The executable is written to the project root:
 ./game
 ```
 
+The build also creates host tools for the LUT pipeline:
+
+```bash
+./codec_tool encode 0rb00b0r0
+./codec_tool decode 2694
+./generate_boards
+./generate_lut
+```
+
 ## Play
 
 Run the game:
@@ -95,7 +104,13 @@ q
 ## Project Files
 
 - `main.cpp` - entry point and high-level project notes.
-- `app.h` - CLI renderer, board logic, minimax search, and AI personality scoring.
+- `app.h` - CLI input, rendering, and game loop.
+- `engine.h` - board logic, base-3 codec, minimax search, and AI personality scoring.
+- `codec_tool.cpp` - host utility for base-3 board encode/decode checks.
+- `generate_boards.cpp` - host generator for all legal reachable board states.
+- `generate_lut.cpp` - host generator for the packed AVR `BEST_MOVE` table.
+- `boards.txt` - generated legal-board list.
+- `lut.h` - generated `PROGMEM` lookup table.
 - `main.ino` - ATmega328P / Arduino AVR sketch using the calibrated keypad and LED matrix.
 - `CMakeLists.txt` - CMake build configuration.
 - `blueprint.txt` - ATmega328P pin and LED/keypad calibration notes.

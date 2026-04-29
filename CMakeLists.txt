@@ -9,3 +9,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_executable(game main.cpp)
+add_executable(codec_tool codec_tool.cpp)
+add_executable(generate_boards generate_boards.cpp)
+add_executable(generate_lut generate_lut.cpp)

@@ -12,6 +12,9 @@ compile_commands.json
 # Local binaries
 game
 main
+codec_tool
+generate_boards
+generate_lut
 *.out
 *.exe
 *.elf

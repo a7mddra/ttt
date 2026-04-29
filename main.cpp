@@ -43,8 +43,8 @@
     position value:
         center > corner > edge
 
-    random salt:
-        tiny randomness among truly equal moves
+    deterministic order:
+        stable final tie-breaker for reproducible tools / LUT generation
 
 
     Final personality:
@@ -55,7 +55,7 @@
     4. Prefer slower losses if losing is unavoidable.
     5. Among equal outcomes, choose the move that creates more pressure.
     6. Among still-equal moves, choose better position.
-    7. Randomize only among truly equal moves.
+    7. Keep final ties deterministic; the LUT can carry one tied alternate.
 */
 
 #include <bits/stdc++.h>
