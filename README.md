@@ -4,6 +4,8 @@ A standalone ATmega328P tic-tac-toe board with a 3x3 RGB LED display, a 3x3 keyp
 
 The Arduino/ATmega build is the main project. The C++ command-line app is the companion toolchain used to test the game engine and generate the lookup table that the microcontroller reads from flash.
 
+Demo ![Demo](album/IMG_20260430_013619_175~2.jpg.jpeg)
+
 ## What It Does
 
 - The human player presses a key on the 3x3 keypad.
@@ -164,5 +166,4 @@ CLI symbols:
 - Build photo 1 ![Build photo 1](album/IMG-20260430-WA0005.jpeg)
 - Build photo 2 ![Build photo 2](album/IMG_20260430_013549_053.jpg.jpeg)
 - Build photo 3 ![Build photo 3](album/IMG_20260430_013556_096.jpg.jpeg)
-- Build photo 4 ![Build photo 4](album/IMG_20260430_013619_175~2.jpg.jpeg)
 - Build photo 5 ![Build photo 5](album/IMG_20260430_014512_095~2.jpg.jpeg)
