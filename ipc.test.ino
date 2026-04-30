@@ -1,167 +1,415 @@
 #include <Arduino.h>
 
-// --- Multiplexed Anodes ---
-const byte RED_ROW[3] = {6, 9, 3};
-const byte GREEN_ROW[3] = {5, 8, 2};
-const byte BLUE_ROW[3] = {4, 7, 10};
+/*
+                              ┌─────────────┐
+       (RESET) 1k to 5V  1  ->│ •           │<- 28  Keypad
+    (RX to Nano) Serial  2  ->│             │<- 27  Keypad
+    (TX to Nano) Serial  3  ->│             │<- 26  Keypad
+             (Anode) D2  4  ->│             │<- 25  Keypad
+             (Anode) D3  5  ->│             │<- 24  Keypad
+             (Anode) D4  6  ->│             │<- 23  Keypad
+                 5V VCC  7  ->│             │<- 22  GND
+                    GND  8  ->│ ATmega 328p │<- 21  AREF
+          16MHz Crystal  9  ->│             │<- 20  5V AVCC
+          16MHz Crystal 10  ->│             │<- 19  D13 (BJT Cathode Row)
+             (Anode) D5 11  ->│             │<- 18  D12 (BJT Cathode Row)
+             (Anode) D6 12  ->│             │<- 17  D11 (BJT Cathode Row)
+             (Anode) D7 13  ->│             │<- 16  D10 (Anode)
+             (Anode) D8 14  ->│             │<- 15  D9  (Anode)
+                              └─────────────┘
+*/
 
-// --- BJT Cathode Columns ---
-const byte COL[3] = {11, 12, 13};
+/*
+  3x3 RGB LED grid
 
-// Keypad Pins
-const byte KP_ROW[3] = {A0, A1, A2};
-const byte KP_COL[3] = {A3, A4, A5};
+  Common cathode columns through NPN BJTs:
+    COL HIGH = cathode column ON
+    COL LOW  = cathode column OFF
 
-// --- GAME STATE ---
-byte board[3][3] = {0};         // 0=Empty, 1=Blue, 2=Red
-bool greenMask[3][3] = {false}; // True if part of a winning line
+  RGB anode pins:
+    Anode HIGH = color ON
+    Anode INPUT/LOW = color OFF / high-Z safe state
+*/
+
+// ---------- LED PINS ----------
+
+// Physical rows, color anodes
+const byte R0 = 6;
+const byte R1 = 9;
+const byte R2 = 3;
+
+const byte G0 = 5;
+const byte G1 = 8;
+const byte G2 = 2;
+
+const byte BL0 = 4;
+const byte BL1 = 7;
+const byte BL2 = 10;
+
+// Cathode columns through BJTs
+const byte C0 = 11;
+const byte C1 = 12;
+const byte C2 = 13;
+
+// Keypad
+const byte KR0 = A0;
+const byte KR1 = A1;
+const byte KR2 = A2;
+
+const byte KC0 = A3;
+const byte KC1 = A4;
+const byte KC2 = A5;
+
+// ---------- GAME STATE ----------
+
+byte board[3][3] = {0};          // 0 empty, 1 blue, 2 red
+bool greenMask[3][3] = {false};  // winning LEDs
 bool isBlueTurn = true;
 bool gameOver = false;
 
-// --- HARDWARE DRIVERS ---
-void allOff()
+// ---------- LOW LEVEL LED CONTROL ----------
+
+void anodesHiZ()
 {
-  for (byte i = 0; i < 3; i++)
-  {
-    digitalWrite(COL[i], LOW);
-    digitalWrite(RED_ROW[i], LOW);
-    digitalWrite(GREEN_ROW[i], LOW);
-    digitalWrite(BLUE_ROW[i], LOW);
-  }
+  // First write LOW, then input.
+  // This avoids enabling internal pullups accidentally.
+  digitalWrite(R0, LOW); pinMode(R0, INPUT);
+  digitalWrite(R1, LOW); pinMode(R1, INPUT);
+  digitalWrite(R2, LOW); pinMode(R2, INPUT);
+
+  digitalWrite(G0, LOW); pinMode(G0, INPUT);
+  digitalWrite(G1, LOW); pinMode(G1, INPUT);
+  digitalWrite(G2, LOW); pinMode(G2, INPUT);
+
+  digitalWrite(BL0, LOW); pinMode(BL0, INPUT);
+  digitalWrite(BL1, LOW); pinMode(BL1, INPUT);
+  digitalWrite(B2, LOW); pinMode(B2, INPUT);
 }
 
-// color: 1=Blue, 2=Red, 3=Green
-void lightOne(byte r, byte c, byte color)
+void cathodesOff()
+{
+  digitalWrite(C0, LOW);
+  digitalWrite(C1, LOW);
+  digitalWrite(C2, LOW);
+}
+
+void allOff()
+{
+  cathodesOff();
+  anodesHiZ();
+}
+
+// color: 1 blue, 2 red, 3 green
+void oneLedHard(byte r, byte c, byte color)
 {
   allOff();
 
-  if (color == 1)
-    digitalWrite(BLUE_ROW[r], HIGH);
-  if (color == 2)
-    digitalWrite(RED_ROW[r], HIGH);
-  if (color == 3)
-    digitalWrite(GREEN_ROW[r], HIGH);
+  // Small blanking time: lets BJT/storage/capacitance settle.
+  delayMicroseconds(30);
 
-  digitalWrite(COL[c], HIGH);
+  byte anodePin = 255;
+  byte cathodePin = 255;
+
+  // ---------- HARD CODED LED MAP ----------
+
+  if (r == 0 && c == 0)
+  {
+    if (color == 1) anodePin = BL0;
+    if (color == 2) anodePin = R0;
+    if (color == 3) anodePin = G0;
+    cathodePin = C0;
+  }
+  else if (r == 0 && c == 1)
+  {
+    if (color == 1) anodePin = BL0;
+    if (color == 2) anodePin = R0;
+    if (color == 3) anodePin = G0;
+    cathodePin = C1;
+  }
+  else if (r == 0 && c == 2)
+  {
+    if (color == 1) anodePin = BL0;
+    if (color == 2) anodePin = R0;
+    if (color == 3) anodePin = G0;
+    cathodePin = C2;
+  }
+
+  else if (r == 1 && c == 0)
+  {
+    if (color == 1) anodePin = BL1;
+    if (color == 2) anodePin = R1;
+    if (color == 3) anodePin = G1;
+    cathodePin = C0;
+  }
+  else if (r == 1 && c == 1)
+  {
+    if (color == 1) anodePin = BL1;
+    if (color == 2) anodePin = R1;
+    if (color == 3) anodePin = G1;
+    cathodePin = C1;
+  }
+  else if (r == 1 && c == 2)
+  {
+    if (color == 1) anodePin = BL1;
+    if (color == 2) anodePin = R1;
+    if (color == 3) anodePin = G1;
+    cathodePin = C2;
+  }
+
+  else if (r == 2 && c == 0)
+  {
+    if (color == 1) anodePin = BL2;
+    if (color == 2) anodePin = R2;
+    if (color == 3) anodePin = G2;
+    cathodePin = C0;
+  }
+  else if (r == 2 && c == 1)
+  {
+    if (color == 1) anodePin = BL2;
+    if (color == 2) anodePin = R2;
+    if (color == 3) anodePin = G2;
+    cathodePin = C1;
+  }
+  else if (r == 2 && c == 2)
+  {
+    if (color == 1) anodePin = BL2;
+    if (color == 2) anodePin = R2;
+    if (color == 3) anodePin = G2;
+    cathodePin = C2;
+  }
+
+  if (anodePin == 255 || cathodePin == 255)
+  {
+    allOff();
+    return;
+  }
+
+  // Turn anode on first, then sink cathode.
+  pinMode(anodePin, OUTPUT);
+  digitalWrite(anodePin, HIGH);
+
+  delayMicroseconds(5);
+
+  digitalWrite(cathodePin, HIGH);
+
+  delayMicroseconds(700);
+
+  allOff();
 }
 
-// Scans the board dot-by-dot. Zero ghosting.
+// ---------- DISPLAY ----------
+
 void renderBoard()
 {
-  for (byte r = 0; r < 3; r++)
-  {
-    for (byte c = 0; c < 3; c++)
-    {
-      if (greenMask[r][c])
-      {
-        lightOne(r, c, 3); // Winner is Green
-        delayMicroseconds(1000);
-      }
-      else if (board[r][c] == 1)
-      {
-        lightOne(r, c, 1); // Player 1 is Blue
-        delayMicroseconds(1000);
-      }
-      else if (board[r][c] == 2)
-      {
-        lightOne(r, c, 2); // Player 2 is Red
-        delayMicroseconds(1000);
-      }
-    }
-  }
-  allOff(); // Blanking interval to prevent bleed
+  // Hardcoded-ish safe display scan.
+  // Empty LEDs are skipped.
+
+  if (greenMask[0][0]) oneLedHard(0, 0, 3);
+  else if (board[0][0] == 1) oneLedHard(0, 0, 1);
+  else if (board[0][0] == 2) oneLedHard(0, 0, 2);
+
+  if (greenMask[0][1]) oneLedHard(0, 1, 3);
+  else if (board[0][1] == 1) oneLedHard(0, 1, 1);
+  else if (board[0][1] == 2) oneLedHard(0, 1, 2);
+
+  if (greenMask[0][2]) oneLedHard(0, 2, 3);
+  else if (board[0][2] == 1) oneLedHard(0, 2, 1);
+  else if (board[0][2] == 2) oneLedHard(0, 2, 2);
+
+
+  if (greenMask[1][0]) oneLedHard(1, 0, 3);
+  else if (board[1][0] == 1) oneLedHard(1, 0, 1);
+  else if (board[1][0] == 2) oneLedHard(1, 0, 2);
+
+  if (greenMask[1][1]) oneLedHard(1, 1, 3);
+  else if (board[1][1] == 1) oneLedHard(1, 1, 1);
+  else if (board[1][1] == 2) oneLedHard(1, 1, 2);
+
+  if (greenMask[1][2]) oneLedHard(1, 2, 3);
+  else if (board[1][2] == 1) oneLedHard(1, 2, 1);
+  else if (board[1][2] == 2) oneLedHard(1, 2, 2);
+
+
+  if (greenMask[2][0]) oneLedHard(2, 0, 3);
+  else if (board[2][0] == 1) oneLedHard(2, 0, 1);
+  else if (board[2][0] == 2) oneLedHard(2, 0, 2);
+
+  if (greenMask[2][1]) oneLedHard(2, 1, 3);
+  else if (board[2][1] == 1) oneLedHard(2, 1, 1);
+  else if (board[2][1] == 2) oneLedHard(2, 1, 2);
+
+  if (greenMask[2][2]) oneLedHard(2, 2, 3);
+  else if (board[2][2] == 1) oneLedHard(2, 2, 1);
+  else if (board[2][2] == 2) oneLedHard(2, 2, 2);
+
+  allOff();
 }
 
-// --- LOGIC ---
+// ---------- GAME LOGIC ----------
+
 void checkWin()
 {
-  byte lines[8][3][2] = {
-      {{0, 0}, {0, 1}, {0, 2}}, {{1, 0}, {1, 1}, {1, 2}}, {{2, 0}, {2, 1}, {2, 2}}, // Rows
-      {{0, 0}, {1, 0}, {2, 0}},
-      {{0, 1}, {1, 1}, {2, 1}},
-      {{0, 2}, {1, 2}, {2, 2}}, // Cols
-      {{0, 0}, {1, 1}, {2, 2}},
-      {{0, 2}, {1, 1}, {2, 0}} // Diagonals
-  };
-
-  for (int i = 0; i < 8; i++)
-  {
-    byte r1 = lines[i][0][0], c1 = lines[i][0][1];
-    byte r2 = lines[i][1][0], c2 = lines[i][1][1];
-    byte r3 = lines[i][2][0], c3 = lines[i][2][1];
-
-    if (board[r1][c1] != 0 && board[r1][c1] == board[r2][c2] && board[r1][c1] == board[r3][c3])
-    {
-      greenMask[r1][c1] = true;
-      greenMask[r2][c2] = true;
-      greenMask[r3][c3] = true;
-      gameOver = true;
-    }
-  }
-
-  // Check for draw
-  bool isFull = true;
+  // clear old green mask first
   for (byte r = 0; r < 3; r++)
   {
     for (byte c = 0; c < 3; c++)
     {
-      if (board[r][c] == 0)
-        isFull = false;
+      greenMask[r][c] = false;
     }
   }
-  if (isFull && !gameOver)
+
+  gameOver = false;
+
+  // rows
+  if (board[0][0] && board[0][0] == board[0][1] && board[0][0] == board[0][2])
+  {
+    greenMask[0][0] = greenMask[0][1] = greenMask[0][2] = true;
     gameOver = true;
+  }
+
+  if (board[1][0] && board[1][0] == board[1][1] && board[1][0] == board[1][2])
+  {
+    greenMask[1][0] = greenMask[1][1] = greenMask[1][2] = true;
+    gameOver = true;
+  }
+
+  if (board[2][0] && board[2][0] == board[2][1] && board[2][0] == board[2][2])
+  {
+    greenMask[2][0] = greenMask[2][1] = greenMask[2][2] = true;
+    gameOver = true;
+  }
+
+  // columns
+  if (board[0][0] && board[0][0] == board[1][0] && board[0][0] == board[2][0])
+  {
+    greenMask[0][0] = greenMask[1][0] = greenMask[2][0] = true;
+    gameOver = true;
+  }
+
+  if (board[0][1] && board[0][1] == board[1][1] && board[0][1] == board[2][1])
+  {
+    greenMask[0][1] = greenMask[1][1] = greenMask[2][1] = true;
+    gameOver = true;
+  }
+
+  if (board[0][2] && board[0][2] == board[1][2] && board[0][2] == board[2][2])
+  {
+    greenMask[0][2] = greenMask[1][2] = greenMask[2][2] = true;
+    gameOver = true;
+  }
+
+  // diagonals
+  if (board[0][0] && board[0][0] == board[1][1] && board[0][0] == board[2][2])
+  {
+    greenMask[0][0] = greenMask[1][1] = greenMask[2][2] = true;
+    gameOver = true;
+  }
+
+  if (board[0][2] && board[0][2] == board[1][1] && board[0][2] == board[2][0])
+  {
+    greenMask[0][2] = greenMask[1][1] = greenMask[2][0] = true;
+    gameOver = true;
+  }
+
+  // draw
+  bool full = true;
+
+  for (byte r = 0; r < 3; r++)
+  {
+    for (byte c = 0; c < 3; c++)
+    {
+      if (board[r][c] == 0) full = false;
+    }
+  }
+
+  if (full && !gameOver)
+  {
+    gameOver = true;
+  }
 }
 
 void resetGame()
 {
-  for (byte r = 0; r < 3; r++)
-  {
-    for (byte c = 0; c < 3; c++)
-    {
-      board[r][c] = 0;
-      greenMask[r][c] = false;
-    }
-  }
+  allOff();
+
+  board[0][0] = 0; board[0][1] = 0; board[0][2] = 0;
+  board[1][0] = 0; board[1][1] = 0; board[1][2] = 0;
+  board[2][0] = 0; board[2][1] = 0; board[2][2] = 0;
+
+  greenMask[0][0] = false; greenMask[0][1] = false; greenMask[0][2] = false;
+  greenMask[1][0] = false; greenMask[1][1] = false; greenMask[1][2] = false;
+  greenMask[2][0] = false; greenMask[2][1] = false; greenMask[2][2] = false;
+
   isBlueTurn = true;
   gameOver = false;
-  delay(300); // Prevent accidental double-press
 }
 
-// --- KEYPAD INPUT ---
+// ---------- KEYPAD ----------
+
+void keypadIdle()
+{
+  pinMode(KR0, INPUT);
+  pinMode(KR1, INPUT);
+  pinMode(KR2, INPUT);
+
+  pinMode(KC0, INPUT_PULLUP);
+  pinMode(KC1, INPUT_PULLUP);
+  pinMode(KC2, INPUT_PULLUP);
+}
+
 int readRawKey()
 {
-  for (byte r = 0; r < 3; r++)
-  {
-    for (byte x = 0; x < 3; x++)
-      pinMode(KP_ROW[x], INPUT);
-    pinMode(KP_ROW[r], OUTPUT);
-    digitalWrite(KP_ROW[r], LOW);
-    delayMicroseconds(100);
+  // Important: shut LED matrix completely off before touching keypad.
+  allOff();
 
-    for (byte c = 0; c < 3; c++)
-    {
-      if (digitalRead(KP_COL[c]) == LOW)
-      {
-        for (byte x = 0; x < 3; x++)
-          pinMode(KP_ROW[x], INPUT);
-        return r * 3 + c;
-      }
-    }
-  }
-  for (byte x = 0; x < 3; x++)
-    pinMode(KP_ROW[x], INPUT);
+  keypadIdle();
+
+  // row 0
+  pinMode(KR0, OUTPUT);
+  digitalWrite(KR0, LOW);
+  delayMicroseconds(80);
+
+  if (digitalRead(KC0) == LOW) { keypadIdle(); return 0; }
+  if (digitalRead(KC1) == LOW) { keypadIdle(); return 1; }
+  if (digitalRead(KC2) == LOW) { keypadIdle(); return 2; }
+
+  pinMode(KR0, INPUT);
+
+  // row 1
+  pinMode(KR1, OUTPUT);
+  digitalWrite(KR1, LOW);
+  delayMicroseconds(80);
+
+  if (digitalRead(KC0) == LOW) { keypadIdle(); return 3; }
+  if (digitalRead(KC1) == LOW) { keypadIdle(); return 4; }
+  if (digitalRead(KC2) == LOW) { keypadIdle(); return 5; }
+
+  pinMode(KR1, INPUT);
+
+  // row 2
+  pinMode(KR2, OUTPUT);
+  digitalWrite(KR2, LOW);
+  delayMicroseconds(80);
+
+  if (digitalRead(KC0) == LOW) { keypadIdle(); return 6; }
+  if (digitalRead(KC1) == LOW) { keypadIdle(); return 7; }
+  if (digitalRead(KC2) == LOW) { keypadIdle(); return 8; }
+
+  pinMode(KR2, INPUT);
+
+  keypadIdle();
   return -1;
 }
 
 void processInput()
 {
   static int lastRaw = -1;
+
   int raw = readRawKey();
 
   if (raw != -1 && raw != lastRaw)
   {
-    lastRaw = raw; // Lock until released
+    lastRaw = raw;
 
     if (gameOver)
     {
@@ -172,14 +420,13 @@ void processInput()
     byte physRow = raw / 3;
     byte rawCol = raw % 3;
 
-    // Fix the swapped columns (A4 is Left, A3 is Middle, A5 is Right)
-    byte physCol = 0;
-    if (rawCol == 1)
-      physCol = 0; // Left
-    else if (rawCol == 0)
-      physCol = 1; // Middle
-    else if (rawCol == 2)
-      physCol = 2; // Right
+    // Your swapped column fix:
+    // A4 = left, A3 = middle, A5 = right
+    byte physCol;
+
+    if (rawCol == 1) physCol = 0;
+    else if (rawCol == 0) physCol = 1;
+    else physCol = 2;
 
     if (board[physRow][physCol] == 0)
     {
@@ -190,27 +437,33 @@ void processInput()
   }
 
   if (raw == -1)
-    lastRaw = -1; // Reset lock when released
+  {
+    lastRaw = -1;
+  }
 }
 
-// --- MAIN LOOP ---
+// ---------- SETUP / LOOP ----------
+
 void setup()
 {
-  for (byte i = 0; i < 3; i++)
-  {
-    pinMode(RED_ROW[i], OUTPUT);
-    pinMode(GREEN_ROW[i], OUTPUT);
-    pinMode(BLUE_ROW[i], OUTPUT);
-    pinMode(COL[i], OUTPUT);
+  // cathodes
+  pinMode(C0, OUTPUT);
+  pinMode(C1, OUTPUT);
+  pinMode(C2, OUTPUT);
 
-    pinMode(KP_ROW[i], INPUT);
-    pinMode(KP_COL[i], INPUT_PULLUP);
-  }
-  allOff();
+  cathodesOff();
+  anodesHiZ();
+
+  keypadIdle();
 }
 
 void loop()
 {
   processInput();
+
+  // Draw several refresh passes per input read.
+  // This keeps brightness stable and reduces keypad/display fighting.
+  renderBoard();
+  renderBoard();
   renderBoard();
 }
